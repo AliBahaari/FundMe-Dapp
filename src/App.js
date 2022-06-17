@@ -28,9 +28,19 @@ function App() {
   const [fundingHistory, setFundingHistory] = useState("");
   const [walletAddress, setWalletAddress] = useState("");
 
+  const requestAccount = async () => {
+    await ethProv.request({ method: "eth_requestAccounts" });
+  };
+
+  const handleAccountsChanged = (event) => {
+    setWalletAddress(event[0]);
+  };
+
   useEffect(() => {
     (async () => {
       if (typeof ethProv !== "undefined") {
+        await requestAccount();
+
         const provider = new ethers.providers.Web3Provider(ethProv);
         const signer = provider.getSigner();
         const walletAddressValue = await signer.getAddress();
@@ -47,25 +57,44 @@ function App() {
         });
       }
     })();
-  }, []);
 
-  const requestAccount = async () => {
-    await ethProv.requestAccount({ method: "eth_requestAccounts" });
-  };
+    ethProv.on("accountsChanged", handleAccountsChanged);
+
+    return () =>
+      ethProv.removeListener("accountsChanged", handleAccountsChanged);
+  }, []);
 
   const fund = async () => {
     if (typeof ethProv !== "undefined") {
-      if (fundingValue) {
-        requestAccount();
+      await requestAccount();
 
+      if (fundingValue) {
         const provider = new ethers.providers.Web3Provider(ethProv);
         const signer = provider.getSigner();
-        const contract = new ethers.Contract(fundMeAddress, FundMe.abi, signer);
-        const transaction = await contract.fund({
-          value: ethers.utils.parseEther(fundingValue),
-        });
-        await transaction.wait();
-        setFundingValue("");
+        const balance = await signer.getBalance();
+
+        if (ethers.utils.formatEther(balance._hex) > fundingValue) {
+          const contract = new ethers.Contract(
+            fundMeAddress,
+            FundMe.abi,
+            signer
+          );
+          const transaction = await contract.fund({
+            value: ethers.utils.parseEther(fundingValue),
+          });
+          await transaction.wait();
+          setFundingValue("");
+        } else {
+          toast.error(`😬 Wallet Doesn't Have: ${fundingValue} ETH`, {
+            position: "bottom-left",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+            progress: undefined,
+          });
+        }
       } else {
         toast.error("😶 Enter Funding Price Please...", {
           position: "bottom-left",
@@ -82,13 +111,28 @@ function App() {
 
   const withdraw = async () => {
     if (typeof ethProv !== "undefined") {
-      requestAccount();
+      await requestAccount();
 
       const provider = new ethers.providers.Web3Provider(ethProv);
       const signer = provider.getSigner();
       const contract = new ethers.Contract(fundMeAddress, FundMe.abi, signer);
-      const transaction = await contract.withdraw();
-      await transaction.wait();
+      try {
+        const transaction = await contract.withdraw();
+        await transaction.wait();
+      } catch (error) {
+        const { message } = error.error;
+        if (message === "execution reverted: You're not the owner.") {
+          toast.error("😈 You Are Not the Owner...", {
+            position: "bottom-left",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+            progress: undefined,
+          });
+        }
+      }
     } else {
       toast.error("😶 Install MetaMask Extension...", {
         position: "bottom-left",
@@ -104,7 +148,7 @@ function App() {
 
   const getFundingHistory = async () => {
     if (typeof ethProv !== "undefined") {
-      requestAccount();
+      await requestAccount();
 
       const provider = new ethers.providers.Web3Provider(ethProv);
       const signer = provider.getSigner();
@@ -144,6 +188,7 @@ function App() {
 
           <Input
             placeholder="Funding Value (ETH)..."
+            value={fundingValue}
             onChange={(event) => setFundingValue(event.target.value)}
           />
           {fundingHistory && (

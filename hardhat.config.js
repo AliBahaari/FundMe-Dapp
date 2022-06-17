@@ -27,7 +27,7 @@ module.exports = {
     },
     rinkeby: {
       url: "https://rinkeby.infura.io/v3/<INFURA_API_KEY>",
-      accounts: ["<WALLET_PRIVATE_KEY>"]
-    }
+      accounts: ["<WALLET_PRIVATE_KEY>"],
+    },
   },
 };
